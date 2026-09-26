@@ -1,0 +1,62 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import bs58 from 'bs58';
+import { Keypair, SystemProgram, VersionedTransaction } from '@solana/web3.js';
+import { Trader, positionKey } from '../src/trader.js';
+import { HELIUS_TIP_ACCOUNTS } from '../src/helius_sender.js';
+
+const row = (owner, mint, amount) => ({ owner, mint, uiTokenAmount: { amount: String(amount) } });
+
+test('live buy and sell sign, submit, confirm, and update positions from actual token deltas', async () => {
+  const keypair = Keypair.generate();
+  const watch = Keypair.generate().publicKey.toBase58();
+  const mint = Keypair.generate().publicKey.toBase58();
+  const rows = new Map();
+  const recorded = [];
+  const sent = [];
+  const journal = {
+    rows,
+    put(value) { recorded.push(value); rows.set(value.id, value); },
+  };
+  let fills = 0;
+  const rpc = {
+    async sendRawTransaction() { throw new Error('standard RPC broadcast must not be used'); },
+    async confirmTransaction(details) {
+      assert.equal(details, sent.at(-1));
+      return { value: { err: null } };
+    },
+    async getTransaction(signature) {
+      assert.equal(signature, sent.at(-1));
+      fills++;
+      return { meta: fills === 1
+        ? { preTokenBalances: [], postTokenBalances: [row(keypair.publicKey.toBase58(), mint, 25)] }
+        : { preTokenBalances: [row(keypair.publicKey.toBase58(), mint, 25)], postTokenBalances: [] } };
+    },
+  };
+  const trader = new Trader(rpc, { dryRun: false, keypair, user: keypair.publicKey,
+    priorityFee: 1000, watches: [watch], senderMode: 'swqos', tipLamports: 5000n,
+    tipAccount: HELIUS_TIP_ACCOUNTS[0] }, journal);
+  trader.sendSenderTransaction = async (mode, raw, signature) => {
+    assert.equal(mode, 'swqos');
+    const tx = VersionedTransaction.deserialize(raw);
+    assert.equal(tx.message.compiledInstructions.length, 4);
+    assert.notDeepEqual(tx.signatures[0], new Uint8Array(64));
+    assert.equal(bs58.encode(tx.signatures[0]), signature);
+    sent.push(signature);
+    return signature;
+  };
+  const ix = SystemProgram.transfer({ fromPubkey: keypair.publicKey,
+    toPubkey: Keypair.generate().publicKey, lamports: 1 });
+  await trader.submitLiveTrade({ id: 'buy', watch, mint, isBuy: true, blockhash: Keypair.generate().publicKey.toBase58() }, [ix]);
+  assert.equal(trader.positions.get(positionKey(watch, mint)), 25n);
+  await trader.submitLiveTrade({ id: 'sell', watch, mint, isBuy: false, blockhash: Keypair.generate().publicKey.toBase58() }, [ix]);
+  assert.equal(trader.positions.get(positionKey(watch, mint)), 0n);
+  assert.equal(sent.length, 2);
+  assert.deepEqual(recorded.map(value => value.status), ['pending', 'confirmed', 'pending', 'confirmed']);
+  assert.deepEqual(recorded.filter(value => value.status === 'confirmed').map(value => value.delta), ['25', '-25']);
+});
+
+test('live trade refuses to submit without a configured signer', async () => {
+  const trader = new Trader({}, { dryRun: false, keypair: null, watches: [] }, { rows: new Map() });
+  await assert.rejects(trader.submitLiveTrade({}, []), /PRIVATE_KEY/);
+});

@@ -1,0 +1,36 @@
+{
+  "name": "copybot",
+  "version": "1.0.0",
+  "description": "Pump.fun bonding-curve copy trading through Yellowstone gRPC",
+  "main": "src/bot.js",
+  "scripts": {
+    "start": "node src/bot.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wang-jundong/copybot.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/wang-jundong/copybot/issues"
+  },
+  "homepage": "https://github.com/wang-jundong/copybot#readme",
+  "dependencies": {
+    "@pump-fun/pump-sdk": "2.0.0",
+    "@pump-fun/pump-swap-sdk": "1.20.0",
+    "@solana/spl-token": "0.4.15",
+    "@solana/web3.js": "1.99.0",
+    "@triton-one/yellowstone-grpc": "7.0.1",
+    "bn.js": "5.2.5",
+    "bs58": "6.0.0",
+    "dotenv": "18.0.4"
+  },
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  }
+}
