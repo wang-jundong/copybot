@@ -1,6 +1,6 @@
 import BN from 'bn.js';
 import bs58 from 'bs58';
-import { PublicKey, TransactionMessage, VersionedTransaction, ComputeBudgetProgram, SystemProgram } from '@solana/web3.js';
+import { Connection, PublicKey, TransactionMessage, VersionedTransaction, ComputeBudgetProgram, SystemProgram } from '@solana/web3.js';
 import { getAssociatedTokenAddressSync, createAssociatedTokenAccountIdempotentInstruction, unpackAccount, unpackMint, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, NATIVE_MINT } from '@solana/spl-token';
 import { OnlinePumpSdk, PUMP_SDK, getBuyTokenAmountFromSolAmount, getSellSolAmountFromTokenAmount } from '@pump-fun/pump-sdk';
 import { GLOBAL_CONFIG_PDA, PUMP_AMM_FEE_CONFIG_PDA, PUMP_AMM_PROGRAM_ID, PUMP_FEE_PROGRAM_ID, PUMP_AMM_SDK, sellBaseInput } from '@pump-fun/pump-swap-sdk';
@@ -11,6 +11,7 @@ import { log } from './logger.js';
 import { chooseHeliusTipAccount, sendHeliusSenderTransaction } from './helius_sender.js';
 import { liveTestAttempts, liveTestSellAmount } from './live_test_limit.js';
 import { RecentBlockhash } from './recent_blockhash.js';
+import { reconcilePendingUntilSettled } from './reconcile_pending.js';
 
 export function positionKey(watch, mint) { return `${watch}:${mint}`; }
 
@@ -41,6 +42,7 @@ export class Trader {
     this.firstBuys = new FirstBuyIndex(connection, journal);
     this.sendSenderTransaction = sendHeliusSenderTransaction;
     this.blockhashCache = new RecentBlockhash(connection);
+    this.recoveryRpc = null;
     this.quoteAmmSell = sellBaseInput;
     this.buildAmmSell = (state, amount, minQuote) => PUMP_AMM_SDK.sellInstructions(state, amount, minQuote);
     this.decodeAmmPool = info => PUMP_AMM_SDK.decodePool(info);
@@ -308,7 +310,9 @@ export class Trader {
     const signature = bs58.encode(tx.signatures[0]);
     // Persist before broadcasting. On uncertain outcomes, stop instead of buying twice.
     for (const entry of entries) this.journal.put({ id: entry.id, watch: entry.watch, mint: trade.mint,
-      status: 'pending', tradeKind, signature, ...latest, venue: allocations ? 'pumpswap' : 'curve',
+      status: 'pending', tradeKind, signature, ...latest, submittedAt: Date.now(),
+      ...(allocations ? { expectedDelta: (-entry.held).toString() } : {}),
+      venue: allocations ? 'pumpswap' : 'curve',
       tipAccount: tipAccount.toBase58(), tipLamports: c.tipLamports.toString() });
     try {
       await this.sendSenderTransaction('swqos', tx.serialize(), signature);
@@ -350,6 +354,18 @@ export class Trader {
       }
       return true;
     } catch (e) {
+      const fallback = this.recoveryRpc || new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+      const outcomes = await reconcilePendingUntilSettled(this.journal, this.rpc, fallback, c.user, new Set([signature]));
+      const outcome = outcomes.get(signature);
+      if (outcome === 'confirmed') {
+        this.positions = positionsFromJournal(this.journal);
+        log('RECOVERED CONFIRMED', trade.watch, trade.mint, signature);
+        return true;
+      }
+      if (outcome === 'failed') {
+        log('RECOVERED FAILED', trade.watch, trade.mint, signature);
+        return false;
+      }
       throw new Error(`Submission outcome uncertain for ${signature}. Reconcile data/live.jsonl before restarting.`, { cause: e });
     }
   }

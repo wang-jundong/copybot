@@ -78,3 +78,26 @@ test('live trade refuses to sign or journal when the cached Helius blockhash is 
   assert.equal(sent, false);
   assert.equal(rows.size, 0);
 });
+
+test('confirmation error resolves an expired absent transaction without a startup blocker', async () => {
+  const keypair = Keypair.generate();
+  const watch = Keypair.generate().publicKey.toBase58();
+  const mint = Keypair.generate().publicKey.toBase58();
+  const rows = new Map();
+  const journal = { rows, put: row => rows.set(row.id, row) };
+  const absent = { async getSignatureStatuses() { return { value: [null] }; },
+    async getTransaction() { return null; },
+    async getBlockHeight() { return 200; } };
+  const rpc = { ...absent, async confirmTransaction() { throw new Error('confirmation expired'); } };
+  const trader = new Trader(rpc, { dryRun: false, keypair, user: keypair.publicKey,
+    watches: [watch], priorityFee: 1000, tipLamports: 5000n,
+    tipAccount: HELIUS_TIP_ACCOUNTS[0] }, journal);
+  trader.recoveryRpc = absent;
+  trader.blockhashCache.current = () => ({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 100 });
+  trader.sendSenderTransaction = async (_mode, _raw, signature) => signature;
+  const ix = SystemProgram.transfer({ fromPubkey: keypair.publicKey,
+    toPubkey: Keypair.generate().publicKey, lamports: 1 });
+  const result = await trader.submitLiveTrade({ id: 'expired', watch, mint, isBuy: true }, [ix]);
+  assert.equal(result, false);
+  assert.equal(rows.get('expired').status, 'failed');
+});

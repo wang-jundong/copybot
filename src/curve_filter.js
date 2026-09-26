@@ -72,7 +72,7 @@ export class FirstBuyIndex {
       before = page.at(-1).signature;
     }
     for (const signature of signatures.reverse()) {
-      const tx = await this.rpc.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 0 });
+      const tx = await this.rpc.getTransaction(signature, { commitment: 'confirmed', maxSupportedTransactionVersion: 1 });
       if (!tx?.meta || tx.meta.err) continue;
       const first = this.decodeEvents(tx.meta.logMessages, signature)
         .find(({ index, event }) => Number.isSafeInteger(index)

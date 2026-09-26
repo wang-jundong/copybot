@@ -10,13 +10,22 @@ import { Journal } from './journal.js';
 import { MintTradeQueue } from './mint_queue.js';
 import { log, logError } from './logger.js';
 import { liveTestAttempts } from './live_test_limit.js';
+import { reconcilePendingUntilSettled } from './reconcile_pending.js';
 
 const Client = yellowstone.default ?? yellowstone;
 const c = loadConfig();
-const journal = new Journal(`data/${c.dryRun ? 'dry-run' : 'live'}.jsonl`);
+const journal = new Journal(`data/${c.dryRun ? 'dry-run' : 'live'}.jsonl`, { allowPending: !c.dryRun });
 let trader;
 try {
-  trader = new Trader(new Connection(c.rpc, { commitment: 'confirmed', confirmTransactionInitialTimeout: 60000 }), c, journal);
+  const rpc = new Connection(c.rpc, { commitment: 'confirmed', confirmTransactionInitialTimeout: 60000 });
+  if (!c.dryRun) {
+    const fallback = new Connection('https://api.mainnet-beta.solana.com', 'confirmed');
+    const outcomes = await reconcilePendingUntilSettled(journal, rpc, fallback, c.user);
+    if ([...outcomes.values()].includes('unresolved'))
+      throw new Error('A live transaction is still uncertain after RPC checks; reconcile data/live.jsonl before restarting');
+    for (const [signature, outcome] of outcomes) log('RECOVERED', outcome.toUpperCase(), signature);
+  }
+  trader = new Trader(rpc, c, journal);
 } catch (error) {
   journal.close();
   throw error;

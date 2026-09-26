@@ -26,9 +26,10 @@ test('first buy is searched from oldest mint history and cached with event times
       assert.equal(options.limit, 1000);
       return [{ signature: 'new' }, { signature: 'middle' }, { signature: 'old' }];
     },
-    async getTransaction(signature) {
+    async getTransaction(signature, options) {
+      assert.equal(options.maxSupportedTransactionVersion, 1);
       requested.push(signature);
-      return { meta: { err: null, logMessages: logs } };
+      return { version: signature === 'old' ? 1 : 0, meta: { err: null, logMessages: logs } };
     },
   };
   const decode = (actualLogs, signature) => {

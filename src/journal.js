@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, appendFileSync, openSync, closeSync, unlinkSync } from 'node:fs';
 
 export class Journal {
-  constructor(path) {
+  constructor(path, { allowPending = false } = {}) {
     this.path = path;
     this.rows = new Map();
     mkdirSync('data', { recursive: true });
@@ -14,7 +14,7 @@ export class Journal {
         const row = JSON.parse(line);
         this.rows.set(row.id, row);
       }
-      if ([...this.rows.values()].some(r => r.status === 'pending')) {
+      if (!allowPending && [...this.rows.values()].some(r => r.status === 'pending')) {
         throw new Error(`Unresolved transaction in ${path}; reconcile its signature before changing pending to confirmed or failed`);
       }
     } catch (e) { this.close(); throw e; }
