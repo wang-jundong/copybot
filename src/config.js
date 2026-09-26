@@ -51,7 +51,7 @@ export function loadConfig(env = process.env) {
       throw new Error('Invalid PRIVATE_KEY: expected a base58 secret key or Solana 64-byte JSON array');
     }
   }
-  const user = keypair?.publicKey ?? PublicKey.unique();
+  const user = keypair?.publicKey ?? Keypair.generate().publicKey;
   const rawWatches = (env.WATCH_WALLETS || env.WATCH_WALLET || '').split(/[\s,]+/).filter(Boolean);
   if (!rawWatches.length) throw new Error('Set WATCH_WALLETS or WATCH_WALLET in .env');
   const watches = [...new Set(rawWatches.map(value => new PublicKey(value).toBase58()))];

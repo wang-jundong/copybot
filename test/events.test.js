@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import bs58 from 'bs58';
 import { PUMP, TRADE_TAG, decodeTrades, sellAmount } from '../src/events.js';
 import { loadConfig } from '../src/config.js';
@@ -96,4 +97,15 @@ test('journal positions stay separate for each source wallet', () => {
   assert.equal(positions.get(positionKey(user.toBase58(), mint.toBase58())), 300n);
   assert.equal(positions.get(positionKey(second, mint.toBase58())), 300n);
   assert.throws(() => positionsFromJournal({ rows: new Map([['old', { status: 'confirmed' }]]) }), /position data/);
+});
+
+
+test('dry-run wallet supports associated token accounts without a private key', () => {
+  const config = loadConfig({ GRPC_ENDPOINT: 'https://example.com', RPC_URL: 'https://example.com',
+    WATCH_WALLET: user.toBase58() });
+  assert.equal(config.dryRun, true);
+  assert.equal(config.keypair, null);
+  for (const program of [TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID]) {
+    assert.doesNotThrow(() => getAssociatedTokenAddressSync(mint, config.user, false, program));
+  }
 });

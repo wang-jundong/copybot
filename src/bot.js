@@ -30,7 +30,7 @@ try {
   journal.close();
   throw error;
 }
-let stopped = false, stream, queued = 0, fatal, blockhashRefresh;
+let stopped = false, stream, queued = 0, fatal, blockhashRefresh, cacheCleanup;
 const tradeQueue = new MintTradeQueue(4);
 const pendingTrades = new Set();
 const scheduled = new Set();
@@ -66,7 +66,16 @@ function refreshSubscription() {
   return Promise.resolve();
 }
 try {
+  const pruneCache = () => {
+    const removed = trader.pruneMintCache(Date.now() / 1000, new Set(tradeQueue.tails.keys()));
+    if (removed) log('CACHE', 'removed', removed, 'mints older than 10 minutes without open positions');
+  };
+  pruneCache();
   await trader.prepareForStream();
+  cacheCleanup = setInterval(() => {
+    try { pruneCache(); }
+    catch (error) { fatal ??= error; stop(); }
+  }, 10 * 60 * 1000);
   if (!c.dryRun) {
     await trader.blockhashCache.refresh();
     blockhashRefresh = setInterval(() => {
@@ -171,6 +180,7 @@ try {
   await Promise.allSettled([...pendingTrades]);
   if (fatal) throw fatal;
 } finally {
+  clearInterval(cacheCleanup);
   clearInterval(blockhashRefresh);
   await Promise.allSettled([...pendingCacheWrites]);
   journal.close();

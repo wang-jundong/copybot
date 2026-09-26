@@ -73,6 +73,34 @@ export class Trader {
     }
     return mints;
   }
+  pruneMintCache(nowSeconds = Date.now() / 1000, activeMints = new Set()) {
+    const protectedMints = new Set(activeMints);
+    // Preserve holdings even if their source wallet is no longer watched.
+    for (const [key, amount] of this.positions) {
+      if (amount > 0n) protectedMints.add(key.slice(key.indexOf(':') + 1));
+    }
+    for (const row of this.journal.rows.values()) {
+      if (row.status === 'pending') protectedMints.add(row.mint);
+    }
+    const expired = new Set();
+    for (const [mint, timestamp] of this.firstBuys.times) {
+      if (Number.isSafeInteger(timestamp) && nowSeconds - timestamp > 600
+        && !protectedMints.has(mint) && !this.firstBuys.pending.has(mint) && !this.mintLoads.has(mint))
+        expired.add(mint);
+    }
+    this.journal.removeClosedMints(expired);
+    if (!expired.size) return 0;
+    for (const mint of expired) {
+      this.firstBuys.times.delete(mint);
+      this.firstBuys.eventIds.delete(mint);
+      this.firstBuys.legacyTried.delete(mint);
+      this.mints.delete(mint);
+    }
+    for (const [key, amount] of this.positions) {
+      if (amount === 0n && expired.has(key.slice(key.indexOf(':') + 1))) this.positions.delete(key);
+    }
+    return expired.size;
+  }
   warmMint(mint) {
     if (this.mints.has(mint)) return Promise.resolve();
     if (this.mintLoads.has(mint)) return this.mintLoads.get(mint);

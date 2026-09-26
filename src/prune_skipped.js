@@ -7,9 +7,9 @@ function writeAll(fd, bytes) {
   while (offset < bytes.length) offset += writeSync(fd, bytes, offset, bytes.length - offset);
 }
 
-// Run only while the bot is stopped. The original file remains intact until
+// Caller must own the journal lock. The original file remains intact until
 // every retained line has been validated and the replacement has been synced.
-function pruneUnlocked(path) {
+export function pruneJournalRows(path, shouldRemove, replacementRows = []) {
   const temporary = `${path}.prune-${process.pid}-${randomUUID()}`;
   const input = openSync(path, 'r');
   let output;
@@ -18,12 +18,13 @@ function pruneUnlocked(path) {
     output = openSync(temporary, 'wx', 0o600);
     const chunk = Buffer.alloc(64 * 1024);
     let carry = Buffer.alloc(0);
+    let endsWithNewline = true;
     const keep = bytes => {
       if (!bytes.length) return;
       const line = bytes.at(-1) === 10 ? bytes.subarray(0, -1) : bytes;
-      if (!line.length) { writeAll(output, bytes); return; }
-      if (JSON.parse(line.toString('utf8')).status === 'skipped') removed++;
-      else writeAll(output, bytes);
+      if (!line.length) { writeAll(output, bytes); endsWithNewline = true; return; }
+      if (shouldRemove(JSON.parse(line.toString('utf8')))) removed++;
+      else { writeAll(output, bytes); endsWithNewline = bytes.at(-1) === 10; }
     };
     while (true) {
       const length = readSync(input, chunk, 0, chunk.length, null);
@@ -38,6 +39,10 @@ function pruneUnlocked(path) {
       if (carry.length > 10 * 1024 * 1024) throw new Error(`Journal row too large in ${path}`);
     }
     keep(carry);
+    if (replacementRows.length) {
+      // A source journal may end without a newline. Separate appended metadata.
+      writeAll(output, Buffer.from((endsWithNewline ? '' : '\n') + replacementRows.map(row => JSON.stringify(row)).join('\n') + '\n'));
+    }
     fsyncSync(output);
   } catch (error) {
     if (output !== undefined) closeSync(output);
@@ -47,7 +52,7 @@ function pruneUnlocked(path) {
   }
   closeSync(output);
   closeSync(input);
-  if (!removed) { unlinkSync(temporary); return 0; }
+  if (!removed && !replacementRows.length) { unlinkSync(temporary); return 0; }
   try { renameSync(temporary, path); }
   catch (error) { unlinkSync(temporary); throw error; }
   const directory = openSync(dirname(path), 'r');
@@ -65,6 +70,6 @@ export function pruneSkippedJournal(path) {
     if (error.code === 'EEXIST') throw new Error(`Stop the bot before pruning ${path}`);
     throw error;
   }
-  try { return pruneUnlocked(path); }
+  try { return pruneJournalRows(path, row => row.status === 'skipped'); }
   finally { closeSync(lockFd); unlinkSync(lock); }
 }
