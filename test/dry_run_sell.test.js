@@ -14,7 +14,7 @@ test('a sell without a tracked position skips before any RPC call', async () => 
     isBuy: false, timestamp: Math.floor(Date.now() / 1000), preBalance: 10n, postBalance: 0n, tokens: 10n };
   config.watches.push(trade.watch);
   await trader.execute(trade);
-  assert.equal(written[0].reason, 'no tracked position');
+  assert.equal(written.length, 0);
 });
 
 test('unwatched trade is ignored before logging, journaling, or RPC', async () => {
@@ -44,7 +44,7 @@ test('uncached first-buy time rejects this buy without RPC while warming in back
   assert.deepEqual(calls.sort(), ['first-buy', 'global', 'mint']);
   trader.firstBuys.times.set(mint, trade.timestamp - 100);
   await trader.execute(trade, Promise.resolve(result));
-  assert.equal(rows.get(trade.id).reason, 'first bonding-curve buy not cached');
+  assert.equal(rows.has(trade.id), false);
 });
 
 test('rejected entry cannot reach a buy quote or transaction', async () => {
@@ -56,7 +56,7 @@ test('rejected entry cannot reach a buy quote or transaction', async () => {
     { rows, has: id => rows.has(id), put: row => rows.set(row.id, row) });
   const trade = { id: 'no-bounds-buy', watch, mint, isBuy: true, timestamp: Math.floor(Date.now() / 1000) };
   await trader.execute(trade, Promise.resolve({ reason: 'age and market-cap limits must both be configured' }));
-  assert.equal(rows.get(trade.id).status, 'skipped');
+  assert.equal(rows.has(trade.id), false);
 });
 
 test('a watched sell can skip without waiting for first-buy cache history', async () => {
@@ -73,7 +73,7 @@ test('a watched sell can skip without waiting for first-buy cache history', asyn
     timestamp: Math.floor(Date.now() / 1000) };
   const cache = trader.observe(trade);
   await trader.execute(trade);
-  assert.equal(rows.get(trade.id).reason, 'no tracked position');
+  assert.equal(rows.has(trade.id), false);
   await Promise.resolve();
   finishHistory(123);
   await cache;

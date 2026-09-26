@@ -10,7 +10,8 @@
     "pm2:stop": "pm2 stop copybot",
     "pm2:restart": "pm2 restart ecosystem.config.cjs --update-env",
     "pm2:status": "pm2 status copybot",
-    "pm2:logs": "pm2 logs copybot"
+    "pm2:logs": "pm2 logs copybot",
+    "journal:prune-skipped": "node src/prune_skipped_cli.js"
   },
   "repository": {
     "type": "git",

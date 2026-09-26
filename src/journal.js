@@ -12,7 +12,7 @@ export class Journal {
       try { content = readFileSync(path, 'utf8'); } catch (e) { if (e.code !== 'ENOENT') throw e; }
       for (const line of content.split('\n').filter(Boolean)) {
         const row = JSON.parse(line);
-        this.rows.set(row.id, row);
+        if (row.status !== 'skipped') this.rows.set(row.id, row);
       }
       if (!allowPending && [...this.rows.values()].some(r => r.status === 'pending')) {
         throw new Error(`Unresolved transaction in ${path}; reconcile its signature before changing pending to confirmed or failed`);
@@ -21,6 +21,7 @@ export class Journal {
   }
   has(id) { return this.rows.has(id); }
   put(row) {
+    if (row.status === 'skipped') return;
     appendFileSync(this.path, JSON.stringify(row) + '\n', { mode: 0o600, flush: true });
     this.rows.set(row.id, row);
   }

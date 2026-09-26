@@ -53,8 +53,8 @@ test('live test permits only one buy and one sell across Trader restarts', async
   assert.equal(await start().submitLiveTrade(trade('sell-1', false), [ix]), true);
   assert.equal(await start().submitLiveTrade(trade('sell-2', false), [ix]), null);
   assert.equal(sends, 2);
-  assert.equal(rows.get('buy-2').reason, 'live test buy limit reached');
-  assert.equal(rows.get('sell-2').reason, 'live test sell limit reached');
+  assert.equal(rows.has('buy-2'), false);
+  assert.equal(rows.has('sell-2'), false);
 });
 
 test('live-test sell exits full allocation only for a valid source sell', () => {

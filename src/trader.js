@@ -136,7 +136,6 @@ export class Trader {
     if (!c.watches.includes(trade.watch)) return;
     if (this.journal.has(trade.id)) return;
     const skip = (reason, quiet = false) => {
-      this.journal.put({ id: trade.id, watch: trade.watch, mint: trade.mint, status: 'skipped', reason });
       if (!quiet) log('SKIP', trade.watch, trade.mint, reason);
     };
     if (Date.now() / 1000 - trade.timestamp > c.maxAge || trade.timestamp > Date.now() / 1000 + 5) return skip('stale event');
@@ -291,8 +290,6 @@ export class Trader {
     const tradeKind = trade.isBuy ? 'buy' : 'sell';
     // This check and the pending journal writes run synchronously before any await.
     if (!this.hasLiveTestSlot(tradeKind)) {
-      for (const entry of entries) this.journal.put({ id: entry.id, watch: entry.watch,
-        mint: trade.mint, status: 'skipped', reason: `live test ${tradeKind} limit reached` });
       log('SKIP', trade.watch, trade.mint, `live test ${tradeKind} limit reached`);
       return null;
     }
