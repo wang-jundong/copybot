@@ -21,7 +21,7 @@ try {
   journal.close();
   throw error;
 }
-let stopped = false, stream, queued = 0, fatal;
+let stopped = false, stream, queued = 0, fatal, blockhashRefresh;
 const tradeQueue = new MintTradeQueue(4);
 const pendingTrades = new Set();
 const scheduled = new Set();
@@ -58,6 +58,13 @@ function refreshSubscription() {
 }
 try {
   await trader.prepareForStream();
+  if (!c.dryRun) {
+    await trader.blockhashCache.refresh();
+    blockhashRefresh = setInterval(() => {
+      trader.blockhashCache.refresh().catch(error =>
+        logError('Helius blockhash refresh failed:', safeGrpcError(error)));
+    }, 5000);
+  }
   if (!c.dryRun && c.liveTestMode)
     log('LIVE_TEST', 'submitted buys', liveTestAttempts(journal, 'buy'), '/ 1',
       'submitted sells', liveTestAttempts(journal, 'sell'), '/ 1');
@@ -103,8 +110,8 @@ try {
               // The first watched buy or sell starts a shared, persistent mint lookup.
               // A sell must not wait for history before it can close a position.
               {
-                const cacheWrite = trader.observe(trade).catch(() => {
-                  logError('First-buy cache lookup failed for watched wallet', trade.watch, 'mint', trade.mint);
+                const cacheWrite = trader.observe(trade).catch(error => {
+                  logError('First-buy cache lookup failed for watched wallet', trade.watch, 'mint', trade.mint, safeGrpcError(error));
                 });
                 pendingCacheWrites.add(cacheWrite);
                 cacheWrite.finally(() => pendingCacheWrites.delete(cacheWrite));
@@ -155,6 +162,7 @@ try {
   await Promise.allSettled([...pendingTrades]);
   if (fatal) throw fatal;
 } finally {
+  clearInterval(blockhashRefresh);
   await Promise.allSettled([...pendingCacheWrites]);
   journal.close();
 }

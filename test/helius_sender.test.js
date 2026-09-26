@@ -58,6 +58,7 @@ test('live Sender trade includes tip in the signed trade transaction and does no
   };
   const trader = new Trader(rpc, { dryRun: false, keypair, user: keypair.publicKey,
     priorityFee: 10000, watches: [watch], senderMode: 'swqos', tipLamports: 5000n, tipAccount: tip }, journal);
+  trader.blockhashCache.current = () => ({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 999 });
   trader.sendSenderTransaction = async (mode, wire, signature) => {
     senderCalls++;
     assert.equal(mode, 'swqos');

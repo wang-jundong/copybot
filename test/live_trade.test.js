@@ -22,7 +22,8 @@ test('live buy and sell sign, submit, confirm, and update positions from actual 
   const rpc = {
     async sendRawTransaction() { throw new Error('standard RPC broadcast must not be used'); },
     async confirmTransaction(details) {
-      assert.equal(details, sent.at(-1));
+      assert.equal(details.signature, sent.at(-1));
+      assert.equal(details.lastValidBlockHeight, 999);
       return { value: { err: null } };
     },
     async getTransaction(signature) {
@@ -36,9 +37,12 @@ test('live buy and sell sign, submit, confirm, and update positions from actual 
   const trader = new Trader(rpc, { dryRun: false, keypair, user: keypair.publicKey,
     priorityFee: 1000, watches: [watch], senderMode: 'swqos', tipLamports: 5000n,
     tipAccount: HELIUS_TIP_ACCOUNTS[0] }, journal);
+  const freshBlockhash = Keypair.generate().publicKey.toBase58();
+  trader.blockhashCache.current = () => ({ blockhash: freshBlockhash, lastValidBlockHeight: 999 });
   trader.sendSenderTransaction = async (mode, raw, signature) => {
     assert.equal(mode, 'swqos');
     const tx = VersionedTransaction.deserialize(raw);
+    assert.equal(tx.message.recentBlockhash, freshBlockhash);
     assert.equal(tx.message.compiledInstructions.length, 4);
     assert.notDeepEqual(tx.signatures[0], new Uint8Array(64));
     assert.equal(bs58.encode(tx.signatures[0]), signature);
@@ -53,10 +57,24 @@ test('live buy and sell sign, submit, confirm, and update positions from actual 
   assert.equal(trader.positions.get(positionKey(watch, mint)), 0n);
   assert.equal(sent.length, 2);
   assert.deepEqual(recorded.map(value => value.status), ['pending', 'confirmed', 'pending', 'confirmed']);
+  assert.deepEqual(recorded.filter(value => value.status === 'pending').map(value => value.lastValidBlockHeight), [999, 999]);
   assert.deepEqual(recorded.filter(value => value.status === 'confirmed').map(value => value.delta), ['25', '-25']);
 });
 
 test('live trade refuses to submit without a configured signer', async () => {
   const trader = new Trader({}, { dryRun: false, keypair: null, watches: [] }, { rows: new Map() });
   await assert.rejects(trader.submitLiveTrade({}, []), /PRIVATE_KEY/);
+});
+
+test('live trade refuses to sign or journal when the cached Helius blockhash is stale', async () => {
+  const keypair = Keypair.generate();
+  const rows = new Map();
+  const trader = new Trader({}, { dryRun: false, keypair, user: keypair.publicKey, watches: [] },
+    { rows, put: row => rows.set(row.id, row) });
+  let sent = false;
+  trader.sendSenderTransaction = async () => { sent = true; };
+  await assert.rejects(trader.submitLiveTrade({ id: 'stale', watch: 'watch', mint: 'mint', isBuy: true }, []),
+    /No fresh Helius blockhash cached/);
+  assert.equal(sent, false);
+  assert.equal(rows.size, 0);
 });

@@ -44,6 +44,7 @@ test('live test permits only one buy and one sell across Trader restarts', async
     blockhash: Keypair.generate().publicKey.toBase58() });
   const start = () => {
     const trader = new Trader(rpc, config, journal);
+    trader.blockhashCache.current = () => ({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 999 });
     trader.sendSenderTransaction = async (_mode, _raw, signature) => { sends++; return signature; };
     return trader;
   };

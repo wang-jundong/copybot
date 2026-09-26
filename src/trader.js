@@ -10,6 +10,7 @@ import { FirstBuyIndex, entryBoundsStatus, entryFilterReason, eventMarketCapLamp
 import { log } from './logger.js';
 import { chooseHeliusTipAccount, sendHeliusSenderTransaction } from './helius_sender.js';
 import { liveTestAttempts, liveTestSellAmount } from './live_test_limit.js';
+import { RecentBlockhash } from './recent_blockhash.js';
 
 export function positionKey(watch, mint) { return `${watch}:${mint}`; }
 
@@ -39,6 +40,7 @@ export class Trader {
     }
     this.firstBuys = new FirstBuyIndex(connection, journal);
     this.sendSenderTransaction = sendHeliusSenderTransaction;
+    this.blockhashCache = new RecentBlockhash(connection);
     this.quoteAmmSell = sellBaseInput;
     this.buildAmmSell = (state, amount, minQuote) => PUMP_AMM_SDK.sellInstructions(state, amount, minQuote);
     this.decodeAmmPool = info => PUMP_AMM_SDK.decodePool(info);
@@ -292,8 +294,8 @@ export class Trader {
       log('SKIP', trade.watch, trade.mint, `live test ${tradeKind} limit reached`);
       return null;
     }
-    if (!trade.blockhash) throw new Error('gRPC transaction has no recent blockhash');
-    const latest = { blockhash: trade.blockhash };
+    const latest = this.blockhashCache.current();
+    if (!latest) throw new Error('No fresh Helius blockhash cached; live trade was not submitted');
     const tipAccount = chooseHeliusTipAccount(c);
     const tipInstruction = SystemProgram.transfer({ fromPubkey: c.user, toPubkey: tipAccount,
       lamports: c.tipLamports });
@@ -310,7 +312,7 @@ export class Trader {
       tipAccount: tipAccount.toBase58(), tipLamports: c.tipLamports.toString() });
     try {
       await this.sendSenderTransaction('swqos', tx.serialize(), signature);
-      const result = await this.rpc.confirmTransaction(signature, 'confirmed');
+      const result = await this.rpc.confirmTransaction({ signature, ...latest }, 'confirmed');
       if (result.value.err) {
         for (const entry of entries) this.journal.put({ id: entry.id, watch: entry.watch, mint: trade.mint,
           tradeKind, signature, status: 'failed' });

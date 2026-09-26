@@ -91,6 +91,7 @@ test('one migration transaction journals confirmed fills for all watched allocat
   const trader = new Trader(rpc, { keypair, user: keypair.publicKey, watches,
     dryRun: false, priorityFee: 1000, tipLamports: 5000n,
     tipAccount: HELIUS_TIP_ACCOUNTS[0] }, journal);
+  trader.blockhashCache.current = () => ({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 999 });
   trader.sendSenderTransaction = async (_mode, _raw, signature) => signature;
   const allocations = watches.map((watch, i) => ({ watch, held: BigInt((i + 1) * 100), id: `migration:1:${watch}` }));
   const ix = SystemProgram.transfer({ fromPubkey: keypair.publicKey,
@@ -152,6 +153,7 @@ test('confirmed failed migration sell keeps all tracked positions open', async (
   const trader = new Trader(rpc, { keypair, user: keypair.publicKey, watches: [watch],
     dryRun: false, priorityFee: 1000, tipLamports: 5000n,
     tipAccount: HELIUS_TIP_ACCOUNTS[0] }, journal);
+  trader.blockhashCache.current = () => ({ blockhash: Keypair.generate().publicKey.toBase58(), lastValidBlockHeight: 999 });
   trader.sendSenderTransaction = async (_mode, _raw, signature) => signature;
   const ix = SystemProgram.transfer({ fromPubkey: keypair.publicKey,
     toPubkey: Keypair.generate().publicKey, lamports: 1 });
