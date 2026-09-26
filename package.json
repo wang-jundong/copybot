@@ -5,7 +5,12 @@
   "main": "src/bot.js",
   "scripts": {
     "start": "node src/bot.js",
-    "test": "node --test"
+    "test": "node --test",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 stop copybot",
+    "pm2:restart": "pm2 restart ecosystem.config.cjs --update-env",
+    "pm2:status": "pm2 status copybot",
+    "pm2:logs": "pm2 logs copybot"
   },
   "repository": {
     "type": "git",
@@ -27,7 +32,8 @@
     "@triton-one/yellowstone-grpc": "7.0.1",
     "bn.js": "5.2.5",
     "bs58": "6.0.0",
-    "dotenv": "18.0.4"
+    "dotenv": "18.0.4",
+    "pm2": "^7.0.4"
   },
   "private": true,
   "engines": {
