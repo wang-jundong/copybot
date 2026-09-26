@@ -18,7 +18,13 @@ npm start
 
 ## Run with PM2
 
-After `npm ci` and configuring `.env`, start one managed process from the project directory:
+Install PM2 globally once for your active Node.js installation:
+
+```sh
+npm install --global pm2
+```
+
+After `npm ci` and configuring `.env`, start one managed process from the project directory. The npm scripts use the globally installed PM2:
 
 ```sh
 npm run pm2:start

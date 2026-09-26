@@ -33,8 +33,7 @@
     "@triton-one/yellowstone-grpc": "7.0.1",
     "bn.js": "5.2.5",
     "bs58": "6.0.0",
-    "dotenv": "18.0.4",
-    "pm2": "^7.0.4"
+    "dotenv": "18.0.4"
   },
   "private": true,
   "engines": {
